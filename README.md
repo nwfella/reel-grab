@@ -56,17 +56,20 @@ python reel_grab.py --no-provision        # UI only, don't touch the engine
 python reel_grab.py --engine-home D:/rg
 ```
 
-Paste a URL → **Fetch** → pick mode/quality/save-folder → **Download**. Playlists are
-detected and listed; downloads queue and run one at a time, with live percent, speed,
-ETA and per-file phase (`Downloading N format(s)` is folded into a single bar, so a
-video+audio mux reads 0-100% once, not twice).
+Paste a URL → **Fetch** → choose **Download as** → **Download**. Playlists are detected and
+listed; downloads queue and run one at a time, with live percent, speed, ETA and per-file
+phase (`Downloading N format(s)` is folded into a single bar, so a video+audio mux reads
+0-100% once, not twice).
 
-Modes:
+**Download as** is a two-part switch, and the primary button names what you will get:
 
-* **Video (merged mp4)** — `bv*[height<=N]+ba/b`, muxed to mp4 by ffmpeg
-* **Audio only** — `-x` to mp3 / m4a / opus
+* **Video (mp4)** — `bv*[height<=N]+ba/b`, muxed to mp4 by ffmpeg; the quality picker shows
+* **Audio (mp3)** — `-x --audio-format mp3`: the audio stream only, no video. The video
+  quality picker hides and the audio-format picker (mp3/m4a/opus) appears, so nothing on
+  screen is inert — the label follows the format you choose.
 
-Filenames are `Title [videoId].ext`, so re-runs dedupe instead of colliding.
+Filenames are `Title [videoId].ext`, so re-runs dedupe instead of colliding, and an mp3
+sits next to the mp4 rather than replacing it.
 
 ## Security
 

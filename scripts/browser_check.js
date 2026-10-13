@@ -19,7 +19,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const net = require("net");
-const { spawn } = require("child_process");
+const { spawn, execFileSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 const APP = path.join(ROOT, "reel_grab.py");
@@ -154,8 +154,11 @@ async function main() {
 
     const errors = [];
     cdp.on((m) => {
-      if (m.method === "Runtime.exceptionThrown") errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
-      if (m.method === "Log.entryAdded" && m.params.entry.level === "error") errors.push(m.params.entry.text);
+      if (m.method === "Runtime.exceptionThrown") errors.push("JS: " + (m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text));
+      if (m.method === "Log.entryAdded" && m.params.entry.level === "error") {
+        const e = m.params.entry;
+        errors.push("net [" + (e.url || "no-url") + "]: " + e.text);
+      }
     });
     await cdp.send("Runtime.enable");
     await cdp.send("Log.enable");
@@ -193,23 +196,35 @@ async function main() {
     check(!head.fetchDisabled, "Fetch enabled once the engine is ready");
     check(!!head.outdir, "default save folder prefilled", head.outdir);
 
-    /* the audio-format control must match the mode on LOAD, not only after a change */
-    const modeSync = JSON.parse(await cdp.eval(`JSON.stringify({
+    /* the mp3 option must be visible on screen, not hidden behind a dimmed dropdown */
+    const modeInit = JSON.parse(await cdp.eval(`JSON.stringify({
       mode: document.getElementById('mode').value,
-      afmtDisabled: document.getElementById('afmt').disabled,
-      qualDisabled: document.getElementById('qual').disabled
+      videoOn: document.getElementById('modeVideo').classList.contains('on'),
+      audioLabel: document.getElementById('modeAudio').textContent.trim(),
+      afmtHidden: document.getElementById('afmtWrap').classList.contains('hidden'),
+      qualHidden: document.getElementById('qualWrap').classList.contains('hidden')
     })`));
-    check(modeSync.mode === "video" && modeSync.afmtDisabled && !modeSync.qualDisabled,
-      "audio-format select dimmed in video mode at load",
-      `mode=${modeSync.mode} afmtDisabled=${modeSync.afmtDisabled} qualDisabled=${modeSync.qualDisabled}`);
-    await cdp.eval("(()=>{const m=document.getElementById('mode');m.value='audio';m.onchange();return true})()");
-    const afterAudio = JSON.parse(await cdp.eval(`JSON.stringify({
-      afmtDisabled: document.getElementById('afmt').disabled,
-      qualDisabled: document.getElementById('qual').disabled })`));
-    check(!afterAudio.afmtDisabled && afterAudio.qualDisabled,
-      "switching to audio mode enables afmt and dims quality",
-      `afmtDisabled=${afterAudio.afmtDisabled} qualDisabled=${afterAudio.qualDisabled}`);
-    await cdp.eval("(()=>{const m=document.getElementById('mode');m.value='video';m.onchange();return true})()");
+    check(modeInit.mode === "video" && modeInit.videoOn, "video mode selected by default", modeInit.mode);
+    check(/mp3/i.test(modeInit.audioLabel), "an mp3 option is visible at load", modeInit.audioLabel);
+    check(modeInit.afmtHidden && !modeInit.qualHidden,
+      "quality shown and audio format hidden in video mode",
+      `afmtHidden=${modeInit.afmtHidden} qualHidden=${modeInit.qualHidden}`);
+    await cdp.eval("(()=>{document.getElementById('modeAudio').click();return true})()");
+    const modeAudio = JSON.parse(await cdp.eval(`JSON.stringify({
+      mode: document.getElementById('mode').value,
+      audioOn: document.getElementById('modeAudio').classList.contains('on'),
+      afmtHidden: document.getElementById('afmtWrap').classList.contains('hidden'),
+      qualHidden: document.getElementById('qualWrap').classList.contains('hidden'),
+      afmt: document.getElementById('afmt').value,
+      btn: document.getElementById('dlBtn').textContent.trim()
+    })`));
+    check(modeAudio.mode === "audio" && modeAudio.audioOn, "clicking the mp3 segment selects audio mode", modeAudio.mode);
+    check(!modeAudio.afmtHidden && modeAudio.qualHidden,
+      "audio format shown and quality hidden in audio mode",
+      `afmtHidden=${modeAudio.afmtHidden} qualHidden=${modeAudio.qualHidden}`);
+    check(modeAudio.afmt === "mp3", "mp3 is the default audio format", modeAudio.afmt);
+    check(/mp3/i.test(modeAudio.btn), "primary button says what it will produce", modeAudio.btn);
+    await cdp.eval("(()=>{document.getElementById('modeVideo').click();return true})()");
 
     /* ---- responsive: no horizontal overflow ---- */
     for (const w of [390, 1024, 1500]) {
@@ -346,6 +361,52 @@ async function main() {
           "reveal() surfaces a failure instead of silently doing nothing", String(bad2));
         check(await cdp.eval("document.getElementById('jobsMsg').style.color.length > 0"),
           "failure message is marked as an error, not styled like success");
+      }
+    }
+
+    /* ---- MP3 only, driven through the UI: the capability asked for most ---- */
+    if (probe) {
+      console.log("[mp3] audio-only download through the UI");
+      await cdp.eval(`(()=>{document.getElementById('modeAudio').click();
+        document.getElementById('outdir').value=${JSON.stringify(OUT)};return true})()`);
+      await cdp.eval("document.getElementById('dlBtn').onclick()", true);
+      /* Find THIS phase's row by its own artefact, not "the first row": after the video job
+         the first row is already done, so waiting on it returns instantly and reads a stale
+         mp4. Match the row whose reveal points at an .mp3. */
+      const MP3_ROW = `(()=>{const rs=[...document.querySelectorAll('.job')];
+        const r=rs.find(x=>{const b=x.querySelector('button');const oc=(b&&b.getAttribute('onclick'))||'';
+          return oc.indexOf('.mp3')>=0 && /^done/.test(x.querySelector('.st').textContent.trim());});
+        return r?JSON.stringify({status:r.querySelector('.st').textContent.trim(),
+          name:r.querySelector('.nm').textContent.trim(),
+          reveal:(r.querySelector('button')||{getAttribute:()=>null}).getAttribute('onclick')||''}):'';})()`;
+      let mp3 = null;
+      try {
+        await waitFor(() => cdp.eval(MP3_ROW), (process.env.RG_DL_MS || 90000), "an .mp3 row to reach done");
+        mp3 = JSON.parse(await cdp.eval(MP3_ROW));
+        check(await cdp.eval("document.querySelectorAll('.job').length") >= 2,
+          "the mp3 ran as a second, separate job");
+      } catch (e) {
+        const st = await cdp.eval("(()=>{const rs=[...document.querySelectorAll('.job')];return rs.map(j=>{const n=j.querySelector('.note');return j.querySelector('.st').textContent.trim()+(n?' :: '+n.textContent.trim():'');}).join(' | ');})()");
+        bad("mp3 download through the UI produced an .mp3 row", `${e.message} | rows: ${st}`);
+      }
+      if (mp3) {
+        const m2 = mp3.reveal.match(/reveal\('(.+)'\)/);
+        const f2 = m2 ? m2[1].replace(/\\\\/g, "\\") : "";
+        check(mp3.status === "done", "audio-only job reached done", mp3.status);
+        check(/\.mp3$/.test(f2), "audio-only job produced an .mp3 (not the video container)", f2);
+        check(!!f2 && fs.existsSync(f2), "the mp3 exists on disk", f2);
+        if (f2 && fs.existsSync(f2)) {
+          check(fs.statSync(f2).size > 100000, "mp3 has real content", (fs.statSync(f2).size / 1e6).toFixed(1) + " MB");
+          const ffprobe = process.env.FFPROBE || path.join(os.homedir(), "bin", "ffprobe.exe");
+          try {
+            const codecs = execFileSync(ffprobe, ["-v", "error", "-show_entries", "stream=codec_name",
+              "-of", "csv=p=0", f2], { encoding: "utf8" }).trim();
+            check(/mp3/.test(codecs), "ffprobe confirms an mp3 audio stream, no video",
+              codecs.split(/\s+/).join(","));
+          } catch (e) {
+            bad("ffprobe readback of the mp3", String(e.message).slice(0, 120));
+          }
+        }
       }
     }
 

@@ -63,6 +63,12 @@ color:var(--dim);margin:8px 0 0}
 .entries{max-height:180px;overflow:auto;font-size:13px;color:var(--dim);
 border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:10px}
 .entries div{padding:2px 0}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:100%}
+.segbtn{background:#0b0f14;color:var(--dim);border:0;border-radius:0;padding:10px 12px;
+font:inherit;font-size:13px;font-weight:600;cursor:pointer;flex:1;white-space:nowrap}
+.segbtn.on{background:var(--acc);color:#04140a}
+.segbtn:hover{color:var(--fg)}
+.segbtn.on:hover{color:#04140a}
 code{background:#0b0f14;border:1px solid var(--line);border-radius:4px;padding:1px 5px;
 font:12px ui-monospace,Consolas,monospace;color:var(--fg)}
 @media(max-width:560px){.meta{grid-template-columns:1fr}.meta img{width:100%}}
@@ -124,13 +130,14 @@ because googlevideo sends no CORS headers and YouTube gates formats behind PO to
   </div>
   <div class="entries hidden" id="entries"></div>
   <div class="row" style="margin-top:14px">
-    <div><label for="mode">Mode</label>
-      <select id="mode">
-        <option value="video">Video (merged mp4)</option>
-        <option value="audio">Audio only</option>
-      </select></div>
-    <div><label for="qual">Quality</label><select id="qual"></select></div>
-    <div><label for="afmt">Audio format</label>
+    <div><label>Download as</label>
+      <input type="hidden" id="mode" value="video">
+      <div class="seg">
+        <button type="button" class="segbtn on" id="modeVideo">Video (mp4)</button>
+        <button type="button" class="segbtn" id="modeAudio">Audio (mp3)</button>
+      </div></div>
+    <div id="qualWrap"><label for="qual">Quality</label><select id="qual"></select></div>
+    <div id="afmtWrap" class="hidden"><label for="afmt">Audio format</label>
       <select id="afmt"><option value="mp3">mp3</option><option value="m4a">m4a</option>
       <option value="opus">opus</option></select></div>
     <div><label for="outdir">Save to</label><input id="outdir" spellcheck="false"></div>
@@ -292,8 +299,18 @@ async function reveal(path){
   catch(e){msg('Could not open the folder: '+e.message,true);}
 }
 function syncMode(){const a=$('mode').value==='audio';
-  $('afmt').disabled=!a;$('qual').disabled=a;}
+  $('afmt').disabled=!a;$('qual').disabled=a;
+  /* Hide, don't dim: a greyed-out mp3 dropdown reads as "mp3 is not available here". */
+  $('afmtWrap').classList.toggle('hidden',!a);
+  $('qualWrap').classList.toggle('hidden',a);
+  $('modeVideo').classList.toggle('on',!a);
+  $('modeAudio').classList.toggle('on',a);
+  $('modeAudio').textContent='Audio ('+$('afmt').value+')';
+  $('dlBtn').textContent=a?'Download mp3':'Download';}
 $('mode').onchange=syncMode;
+$('modeVideo').onclick=()=>{$('mode').value='video';syncMode();};
+$('modeAudio').onclick=()=>{$('mode').value='audio';syncMode();};
+$('afmt').onchange=syncMode;   /* keep the segment label honest about the chosen format */
 syncMode();   /* run it at init too: the control must match the mode on load, not only after a change */
 /* The published page must not probe a default engine URL before it has a token: that is a
    guaranteed console error on every fresh visit, and it hammers a port it knows nothing
