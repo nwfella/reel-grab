@@ -679,6 +679,7 @@ because googlevideo sends no CORS headers and YouTube gates formats behind PO to
 <section class="card">
   <label>Downloads</label>
   <div id="jobs"><p class="note">Nothing yet.</p></div>
+  <p class="note" id="jobsMsg"></p>
 </section>
 
 </div><script>
@@ -819,7 +820,13 @@ function renderJobs(js){
       </div></div>`;}).join('');
 }
 async function cancel(id){await api('/api/cancel',{id});poll();}
-async function reveal(path){await api('/api/opendir',{path});}
+function msg(t,bad){const m=$('jobsMsg');m.textContent=t;m.style.color=bad?'var(--err)':'var(--acc)';}
+/* Never fail silently: a primary action that does nothing and says nothing is a defect.
+   Report what happened, so "it didn't work" is never the only feedback. */
+async function reveal(path){
+  try{const r=await api('/api/opendir',{path});msg('Opened '+(r.dir||path),false);}
+  catch(e){msg('Could not open the folder: '+e.message,true);}
+}
 function syncMode(){const a=$('mode').value==='audio';
   $('afmt').disabled=!a;$('qual').disabled=a;}
 $('mode').onchange=syncMode;
@@ -969,18 +976,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             elif path == "/api/opendir":
                 p = Path(body.get("path") or "")
                 if p.is_file():
-                    d = p.parent
+                    d, target = p.parent, str(p)
                 elif p.is_dir():
-                    d = p
+                    d, target = p, str(p)
                 else:
-                    return self._json({"error": "path not found"}, 404)
+                    return self._json({"error": f"path not found: {p}"}, 404)
                 if IS_WIN:
-                    os.startfile(str(d))                       # noqa: S606
+                    # /select, reveals the file inside its folder and highlights it. The path
+                    # MUST be quoted or explorer silently exits 1 for anything with a space.
+                    try:
+                        subprocess.Popen(f'explorer /select,"{target}"')
+                    except Exception:
+                        os.startfile(str(d))                   # noqa: S606
                 elif sys.platform == "darwin":
-                    subprocess.Popen(["open", str(d)])
+                    subprocess.Popen(["open", "-R", target])
                 else:
                     subprocess.Popen(["xdg-open", str(d)])
-                self._json({"ok": True, "dir": str(d)})
+                self._json({"ok": True, "dir": str(d), "target": target})
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as e:

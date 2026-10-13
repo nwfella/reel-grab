@@ -310,6 +310,42 @@ async function main() {
         if (file && fs.existsSync(file)) {
           check(fs.statSync(file).size > 500000, "downloaded file is real", (fs.statSync(file).size / 1e6).toFixed(1) + " MB");
         }
+
+        /* Open folder — the gap that let a silently dead button ship. Click it for real and
+           require that the request reaches the server AND that the UI reports the outcome.
+           (A window opening cannot be asserted headlessly; that it is *asked for* and
+           acknowledged can.) */
+        const clickRes = await cdp.eval(`(()=>{const b=[...document.querySelectorAll('.job button')].find(x=>/Open folder/.test(x.textContent));
+          if(!b)return 'no Open folder button'; b.click(); return 'clicked';})()`);
+        check(clickRes === "clicked", "an Open folder button is present and clickable", String(clickRes));
+        /* An inline onclick="reveal(...)" compiles to a function with no return, so its value
+           is undefined: wait on the message landing, never on the handler's promise. */
+        let revealed = "";
+        try {
+          await waitFor(() => cdp.eval("document.getElementById('jobsMsg').textContent.trim().length > 0"),
+            20000, "the Open folder result to appear");
+          revealed = await cdp.eval("document.getElementById('jobsMsg').textContent.trim()");
+        } catch (e) {
+          revealed = "no message within 20s (handler never reported)";
+        }
+        check(/^Opened /.test(String(revealed)), "Open folder reports success in the UI", String(revealed));
+        const odir = await cdp.eval("(window.__req||[]).filter(function(r){return r.indexOf('opendir')>=0;}).join(' ; ')");
+        check(/-> 200/.test(odir), "POST /api/opendir reached the server and returned 200", odir);
+      } else {
+        /* YouTube can 403 a media fetch (throttling). That must not be allowed to hide the
+           Open-folder coverage, so exercise the same handler the button calls. */
+        const probe = path.join(OUT, "reveal-probe.txt");
+        fs.writeFileSync(probe, "probe");
+        const good = await cdp.eval(`(async()=>{await reveal(${JSON.stringify(probe)});
+          return document.getElementById('jobsMsg').textContent.trim();})()`, true);
+        check(/^Opened /.test(String(good)), "reveal() reports success for an existing file", String(good));
+        const missing = "C:/nope/missing-" + Date.now() + ".mp4";
+        const bad2 = await cdp.eval(`(async()=>{await reveal(${JSON.stringify(missing)});
+          return document.getElementById('jobsMsg').textContent.trim();})()`, true);
+        check(/Could not open/.test(String(bad2)),
+          "reveal() surfaces a failure instead of silently doing nothing", String(bad2));
+        check(await cdp.eval("document.getElementById('jobsMsg').style.color.length > 0"),
+          "failure message is marked as an error, not styled like success");
       }
     }
 
