@@ -1,0 +1,4 @@
+# Keep line endings predictable: the deploy proof compares the bytes GitHub serves against
+# the artefact the gates ran on, so nothing may be rewritten in transit.
+* text=auto eol=lf
+*.png binary

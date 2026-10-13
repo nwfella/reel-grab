@@ -49,7 +49,10 @@ def main() -> int:
         print("docs/index.html matches reel_grab.py PAGE")
         return 0
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(doc, encoding="utf-8")
+    # write LF explicitly: Python's default text mode emits CRLF on Windows, which git then
+    # normalises to LF, so the served bytes would differ from the artefact we gated.
+    with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(doc)
     (OUT.parent / ".nojekyll").write_text("", encoding="utf-8")
     print(f"wrote {OUT} ({len(doc)} bytes)")
     return 0
