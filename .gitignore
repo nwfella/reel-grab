@@ -9,6 +9,8 @@ verify-run.log
 verify-server.log
 browser-run.log
 pages-run.log
+live*.html
+live-shot.png
 
 # debug debris
 app-run*.log
