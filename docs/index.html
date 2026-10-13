@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>reel-grab</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#0d1117;--card:#161b22;--line:#272e39;--fg:#e6edf3;--dim:#8b949e;
+--acc:#3fb950;--acc2:#58a6ff;--warn:#d29922;--err:#f85149;--radius:10px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:24px 18px 60px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+h1{font-size:22px;margin:0;letter-spacing:-.02em}
+h1 span{color:var(--acc)}
+.sub{color:var(--dim);font-size:13px;margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+padding:16px;margin-bottom:14px}
+label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+color:var(--dim);margin-bottom:6px}
+input,select{width:100%;background:#0b0f14;border:1px solid var(--line);color:var(--fg);
+border-radius:8px;padding:10px 12px;font:inherit;font-size:14px}
+input:focus,select:focus{outline:none;border-color:var(--acc2)}
+button{background:var(--acc);color:#04140a;border:0;border-radius:8px;padding:10px 16px;
+font:inherit;font-weight:600;cursor:pointer}
+button:hover{filter:brightness(1.1)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:500}
+button.sm{padding:6px 10px;font-size:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row>*{flex:1 1 150px}
+.row>button{flex:0 0 auto}
+#outdir{flex:2 1 240px}   /* a real Windows path needs more room than a dropdown */
+.pill{font-size:12px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+.pill.ok{color:var(--acc);border-color:#1f6f37;background:#0d2616}
+.pill.bad{color:var(--err);border-color:#6e2422;background:#2a1211}
+.pill.busy{color:var(--warn);border-color:#6b5213;background:#2a2210}
+.hidden{display:none!important}
+.meta{display:grid;grid-template-columns:96px 1fr;gap:14px}
+.meta img{width:96px;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#0b0f14}
+.t{font-weight:600;margin:0 0 4px;font-size:15px}
+.d{color:var(--dim);font-size:13px;margin:0}
+.bar{height:8px;background:#0b0f14;border:1px solid var(--line);border-radius:99px;overflow:hidden;
+margin:8px 0 6px}
+.bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .25s ease}
+.bar.err i{background:var(--err)}
+.job{border-top:1px solid var(--line);padding:12px 0}
+.job:first-child{border-top:0}
+.job .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.job .nm{font-size:14px;font-weight:500;word-break:break-word}
+.job .st{font-size:12px;color:var(--dim);white-space:nowrap}
+pre{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:10px;
+overflow:auto;max-height:220px;font:12px/1.45 ui-monospace,Consolas,monospace;
+color:var(--dim);margin:8px 0 0}
+.steps{list-style:none;padding:0;margin:0 0 8px}
+.steps li{display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:13px}
+.dot{width:16px;flex:0 0 16px;text-align:center;color:var(--dim)}
+.steps li.ok .dot{color:var(--acc)}
+.steps li.fail .dot{color:var(--err)}
+.steps li.running .dot{color:var(--warn)}
+.steps small{color:var(--dim);display:block;word-break:break-all}
+.note{font-size:12px;color:var(--dim);margin-top:10px}
+.entries{max-height:180px;overflow:auto;font-size:13px;color:var(--dim);
+border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:10px}
+.entries div{padding:2px 0}
+code{background:#0b0f14;border:1px solid var(--line);border-radius:4px;padding:1px 5px;
+font:12px ui-monospace,Consolas,monospace;color:var(--fg)}
+@media(max-width:560px){.meta{grid-template-columns:1fr}.meta img{width:100%}}
+</style></head><body><div class="wrap">
+
+<header>
+  <h1>reel<span>-grab</span></h1>
+  <span id="eng" class="pill">engine?</span>
+  <span id="pot" class="pill">token?</span>
+  <span style="flex:1"></span>
+  <button class="ghost sm" id="setupBtn">Engine setup</button>
+</header>
+<p class="sub">Local YouTube downloader. Runs entirely on this machine &mdash; the engine must be local
+because googlevideo sends no CORS headers and YouTube gates formats behind PO tokens.</p>
+
+<section class="card hidden" id="connectCard">
+  <label>Connect to your local engine</label>
+  <p class="note">This page is served from GitHub Pages and cannot download anything by
+  itself &mdash; googlevideo sends no CORS headers and YouTube gates formats behind PO
+  tokens, so the engine has to run on your machine. Start it with
+  <code>python reel_grab.py</code>, then paste the token it printed.</p>
+  <div class="row">
+    <div><label for="engUrl">Engine URL</label>
+      <input id="engUrl" value="http://127.0.0.1:8730" spellcheck="false"></div>
+    <div><label for="engTok">Token</label>
+      <input id="engTok" placeholder="from the console" spellcheck="false"></div>
+    <button id="connectBtn">Connect</button>
+  </div>
+  <p class="note" id="connectErr" style="color:var(--err)"></p>
+</section>
+
+<section class="card" id="setupCard">
+  <label>Engine</label>
+  <ul class="steps" id="steps"></ul>
+  <div class="row">
+    <button id="provBtn">Provision engine</button>
+    <button class="ghost" id="logBtn">Toggle log</button>
+  </div>
+  <pre id="log" class="hidden"></pre>
+  <p class="note" id="engNote"></p>
+</section>
+
+<section class="card">
+  <label for="url">Video or playlist URL</label>
+  <div class="row">
+    <input id="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+    <button id="fetchBtn">Fetch</button>
+  </div>
+  <div id="err" class="note" style="color:var(--err)"></div>
+</section>
+
+<section class="card hidden" id="probeCard">
+  <div class="meta">
+    <img id="thumb" alt="">
+    <div>
+      <p class="t" id="ptitle"></p>
+      <p class="d" id="pmeta"></p>
+    </div>
+  </div>
+  <div class="entries hidden" id="entries"></div>
+  <div class="row" style="margin-top:14px">
+    <div><label for="mode">Mode</label>
+      <select id="mode">
+        <option value="video">Video (merged mp4)</option>
+        <option value="audio">Audio only</option>
+      </select></div>
+    <div><label for="qual">Quality</label><select id="qual"></select></div>
+    <div><label for="afmt">Audio format</label>
+      <select id="afmt"><option value="mp3">mp3</option><option value="m4a">m4a</option>
+      <option value="opus">opus</option></select></div>
+    <div><label for="outdir">Save to</label><input id="outdir" spellcheck="false"></div>
+    <button id="dlBtn">Download</button>
+  </div>
+  <p class="note" id="lic"></p>
+</section>
+
+<section class="card">
+  <label>Downloads</label>
+  <div id="jobs"><p class="note">Nothing yet.</p></div>
+</section>
+
+</div><script>window.RG_STANDALONE=true;window.RG_BASE='http://127.0.0.1:8730';</script>
+<script>
+const q=new URLSearchParams(location.search);
+/* Standalone (GitHub Pages) build: the page is not served by the engine, so it must be
+   told where the engine lives and must carry the token the app printed. Everything else
+   is the same UI, generated from the same source. */
+const STANDALONE=!!window.RG_STANDALONE;
+let BASE=window.RG_BASE||'';
+let TOKEN=q.get('t')||(location.hash.match(/t=([^&]+)/)||[])[1]||'';
+if(STANDALONE){
+  BASE=(localStorage.getItem('rg_engine')||window.RG_BASE||'http://127.0.0.1:8730').replace(/\/+$/,'');
+  TOKEN=TOKEN||localStorage.getItem('rg_token')||'';
+}
+const api=async(p,b)=>{const r=await fetch(BASE+p,{method:b?'POST':'GET',
+  headers:{'Content-Type':'application/json','X-ReelGrab-Token':TOKEN},
+  body:b?JSON.stringify(b):undefined});
+  const j=await r.json().catch(()=>({error:'bad response '+r.status}));
+  if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));return j;};
+const $=id=>document.getElementById(id);
+let cur=null,busy=false;
+
+function fmtDur(s){if(!s)return'?';s=Math.round(s);const h=Math.floor(s/3600),
+  m=Math.floor(s%3600/60),x=s%60;return (h?h+':':'')+String(m).padStart(h?2:1,'0')+':'
+  +String(x).padStart(2,'0');}
+
+function renderStatus(st){
+  const e=$('eng'),p=$('pot');
+  e.className='pill '+(st.ready?'ok':(st.running?'busy':'bad'));
+  e.textContent=st.ready?'engine ready':(st.running?'provisioning':'engine not ready');
+  p.className='pill '+(st.pot.up?'ok':'bad');
+  p.textContent=st.pot.up?'token server up':'token server down';
+  $('steps').innerHTML=st.steps.map(s=>{
+    const i={ok:'\u2713',fail:'\u2717',running:'\u25cf',pending:'\u25cb'}[s.status]||'\u25cb';
+    return `<li class="${s.status}"><span class="dot">${i}</span><span>${s.label}`+
+      (s.detail?`<small>${s.detail}</small>`:'')+'</span></li>';}).join('');
+  if(st.log.length)$('log').textContent=st.log.join('\n');
+  const t=st.tools||{};
+  $('engNote').textContent=st.failed?('Problem: '+st.failed)
+    :(st.ready?`uv: ${t.uv?'found':'missing'} \u00b7 node: ${t.node?'found':'missing'} \u00b7 ffmpeg: ${t.ffmpeg?'found':'missing'} \u00b7 yt-dlp: ${t.yt_dlp||'not installed'}`
+    :'Provision the engine to download anything.');
+  if(st.paths&&!$('outdir').value)$('outdir').value=st.paths.outdir_default;
+  $('provBtn').disabled=!!st.running;
+  $('provBtn').textContent=st.ready?'Re-check / update':'Provision engine';
+  $('fetchBtn').disabled=!st.ready||busy;
+  $('setupCard').classList.toggle('hidden',st.ready&&!showSetup);
+  $('log').classList.toggle('hidden',!showLog);
+  return st;
+}
+let showLog=false,showSetup=false,connected=false;
+function showConnect(msg){$('connectCard').classList.remove('hidden');
+  $('connectErr').textContent=msg||'';const e=$('eng');
+  e.className='pill bad';e.textContent='local engine not reachable';
+  $('pot').className='pill';$('pot').textContent='token?';}
+if(STANDALONE){$('engUrl').value=BASE;$('engTok').value=TOKEN;if(!TOKEN)showConnect('');}
+$('connectBtn').onclick=async()=>{
+  BASE=$('engUrl').value.trim().replace(/\/+$/,'');TOKEN=$('engTok').value.trim();
+  try{localStorage.setItem('rg_engine',BASE);localStorage.setItem('rg_token',TOKEN);}catch(e){}
+  $('connectErr').textContent='connecting\u2026';
+  try{await api('/api/status');connected=true;$('connectCard').classList.add('hidden');poll();}
+  catch(e){showConnect(e.message);}};
+async function poll(){try{const st=renderStatus(await api('/api/status'));
+  connected=true;$('connectCard').classList.add('hidden');
+  /* /api/jobs returns {jobs:[...]}: passing the wrapper made js.length undefined,
+     which is falsy, so the list rendered its empty state forever. */
+  const jobs=(await api('/api/jobs')).jobs||[];renderJobs(jobs);
+  const active=jobs.some(j=>j.status==='running'||j.status==='queued');
+  setTimeout(poll,st.running||active?700:2500);}catch(e){
+  if(STANDALONE){showConnect(e.message);return;}   /* don't hammer a dead engine; Connect resumes */
+  setTimeout(poll,3000);}}
+$('logBtn').onclick=()=>{showLog=!showLog;$('log').classList.toggle('hidden',!showLog);};
+$('provBtn').onclick=async()=>{try{await api('/api/setup',{});poll();}
+  catch(e){$('err').textContent=e.message;}};
+$('setupBtn').onclick=()=>{showSetup=!showSetup;
+  $('setupCard').classList.toggle('hidden',!showSetup);
+  $('setupCard').scrollIntoView({behavior:'smooth'});};
+
+$('fetchBtn').onclick=doFetch;
+$('url').addEventListener('keydown',e=>{if(e.key==='Enter')doFetch();});
+async function doFetch(){
+  const url=$('url').value.trim();if(!url)return;
+  busy=true;$('fetchBtn').disabled=true;$('fetchBtn').textContent='Fetching\u2026';
+  $('err').textContent='';$('probeCard').classList.add('hidden');
+  try{cur=await api('/api/probe',{url});renderProbe(cur);}
+  catch(e){$('err').textContent=e.message;}
+  busy=false;$('fetchBtn').textContent='Fetch';
+}
+function renderProbe(pr){
+  $('probeCard').classList.remove('hidden');
+  $('ptitle').textContent=pr.title||'(untitled)';
+  const bits=[];
+  if(pr.kind==='playlist')bits.push(pr.count+' videos');
+  else{bits.push(fmtDur(pr.duration));if(pr.uploader)bits.push(pr.uploader);
+       if(pr.heights&&pr.heights.length)bits.push('max '+pr.heights[0]+'p');
+       else bits.push('NO VIDEO FORMATS \u2014 engine problem');}
+  $('pmeta').textContent=bits.join(' \u00b7 ');
+  const th=$('thumb');th.src=pr.thumbnail||'';th.classList.toggle('hidden',!pr.thumbnail);
+  $('lic').textContent=pr.license?('License reported by YouTube: '+pr.license):'';
+  const q=$('qual');q.innerHTML='';
+  const hs=(pr.heights&&pr.heights.length)?pr.heights:[1080,720,480,360];
+  q.innerHTML='<option value="best">best available</option>'+
+    hs.map(h=>`<option value="${h}"${h===720?' selected':''}>${h}p</option>`).join('');
+  const en=$('entries');
+  if(pr.kind==='playlist'&&pr.entries&&pr.entries.length){
+    en.classList.remove('hidden');
+    en.innerHTML=pr.entries.map(e=>`<div>${e.title||e.id}${e.duration?' \u00b7 '+fmtDur(e.duration):''}</div>`).join('');
+  }else en.classList.add('hidden');
+}
+$('dlBtn').onclick=async()=>{
+  const url=$('url').value.trim();
+  if(!url){$('err').textContent='Paste a video or playlist URL first.';return;}
+  /* never derive everything from the probe: yt-dlp does not need it, and a primary
+     button that silently does nothing is a defect, not a guard. */
+  const body={url,title:(cur&&cur.title)||url,playlist:!!(cur&&cur.kind==='playlist'),
+    mode:$('mode').value,height:$('qual').value,audio_format:$('afmt').value,
+    outdir:$('outdir').value.trim()};
+  $('dlBtn').disabled=true;
+  try{await api('/api/download',body);$('err').textContent='';poll();}
+  catch(e){$('err').textContent=e.message;}
+  finally{$('dlBtn').disabled=false;}
+};
+function renderJobs(js){
+  const w=$('jobs');
+  if(!js.length){w.innerHTML='<p class="note">Nothing yet.</p>';return;}
+  w.innerHTML=js.map(j=>{
+    const cls=Math.min(100,j.pct||0);
+    const bad=j.status==='error'||j.status==='canceled';
+    const st=j.status==='done'?'done':(j.status==='running'
+      ?`${cls.toFixed(0)}% ${j.speed||''} ${j.eta?'ETA '+j.eta:''}`:j.status);
+    return `<div class="job"><div class="top"><span class="nm">${j.title||j.url}</span>
+      <span class="st">${st}</span></div>
+      <div class="bar ${bad?'err':''}"><i style="width:${bad?(j.status==='error'?100:cls):cls}%"></i></div>
+      ${j.error?`<p class="note" style="color:var(--err)">${j.error}</p>`:''}
+      <div style="display:flex;gap:8px;margin-top:6px">
+      ${j.file?`<button class="ghost sm" onclick="reveal('${j.file.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">Open folder</button>`:''}
+      ${j.status==='running'||j.status==='queued'
+        ?`<button class="ghost sm" onclick="cancel('${j.id}')">Cancel</button>`:''}
+      </div></div>`;}).join('');
+}
+async function cancel(id){await api('/api/cancel',{id});poll();}
+async function reveal(path){await api('/api/opendir',{path});}
+function syncMode(){const a=$('mode').value==='audio';
+  $('afmt').disabled=!a;$('qual').disabled=a;}
+$('mode').onchange=syncMode;
+syncMode();   /* run it at init too: the control must match the mode on load, not only after a change */
+/* The published page must not probe a default engine URL before it has a token: that is a
+   guaranteed console error on every fresh visit, and it hammers a port it knows nothing
+   about. Wait for the user to press Connect instead. */
+if(!(STANDALONE&&!TOKEN)){poll();}
+</script></body></html>
